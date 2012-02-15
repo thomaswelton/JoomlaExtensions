@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE install PUBLIC "-//Joomla! 1.7//DTD template 1.0//EN" "http://www.joomla.org/xml/dtd/1.7/template-install.dtd">
+<install version="1.7" type="template" method="upgrade">
+	<name>clicklabs</name>
+	<creationDate>2012-01-01</creationDate>
+	<author>Thomas Welton</author>
+	<copyright>Copyright 2012© thomas@clicklabs.co.uk</copyright>
+	<authorEmail>thomas@clicklabs.co.u</authorEmail>
+	<authorUrl>http://www.clicktag.co.uk</authorUrl>
+	<version>1.0.0</version>
+	<description><![CDATA[
+		<h1>clickLabs base template</h1>
+	]]></description>
+	
+	<files>
+		<folder>css</folder>
+		<folder>html</folder>
+		<folder>images</folder>
+		<folder>scripts</folder>
+		<folder>languages</folder>
+		<folder>extensions</folder>
+		<folder>fonts</folder>
+		<folder>sass</folder>
+		<filename>component.php</filename>
+		<filename>favicon.ico</filename>
+		<filename>index.php</filename>
+		<filename>template_preview.png</filename>
+		<filename>template_thumbnail.png</filename>
+		<filename>templateDetails.xml</filename>
+		<filename>config.rb</filename>
+	</files>
+	
+	<languages folder="languages">
+		<language tag="en-GB">en-GB.tpl_clicklabs.ini</language>
+	</languages>
+	
+	<positions>
+		<position>header</position>
+		<position>menu</position>
+		<position>footer</position>
+		<position>debug</position>
+	</positions>
+	
+	<config>
+		<fields name="params">
+		</fields>
+	</config>
+</install>

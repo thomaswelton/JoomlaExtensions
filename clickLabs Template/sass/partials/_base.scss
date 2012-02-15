@@ -1,0 +1,14 @@
+$blueprint-grid-columns: 12;
+$blueprint-grid-width: 56px;
+$blueprint-grid-margin: 8px;
+$blueprint-grid-outer-width: $blueprint_grid_width + $blueprint_grid_margin;
+
+// Import all the default blueprint modules so that we can access their mixins.
+@import "blueprint";
+
+// Combine the partials into a single screen stylesheet.
+@import "compass/css3";
+@import "compass/utilities";
+@import "compass/layout";
+@import "partials/mixins";
+@import "compass/reset";

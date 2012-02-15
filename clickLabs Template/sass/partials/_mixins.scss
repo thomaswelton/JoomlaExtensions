@@ -1,0 +1,194 @@
+@import "compass";
+
+@mixin paddedColumn($cols: $blueprint-grid-columns){
+	@include append(1);
+	@include prepend(1);
+	@include column($blueprint-grid-columns - 2, lastCol);
+}
+
+@mixin roundedWhiteBody {
+  @include column($blueprint-grid-columns, lastCol);
+  @include roundedCorners(('tl','tr','bl','br'),$blueprint-grid-margin,#fff);
+}
+
+@mixin roundedWhitePadding {
+  @include roundedWhiteBody;
+  @include column($blueprint-grid-columns - 2, lastCol);
+  @include append(1);
+  @include prepend(1);
+  @include prepend-top($blueprint-grid-margin);
+  padding-top: $blueprint-grid-outer-width;
+  padding-bottom: $blueprint-grid-outer-width;
+}
+
+@mixin darkAnchor{
+	@include link-colors(#797979, #d2d2d2, #797979, #797979, #797979);
+	font-weight:normal;
+}
+
+@mixin clkForm($form-col: $blueprint-grid-columns - 2){
+	@include blueprint-form;
+	//@include column($form-col,noMargin);
+	.lineItem {
+		$lineItem-col: 	$form-col;
+		$formLabel-col: floor($lineItem-col / 4);
+		$formElement-col:	floor($lineItem-col / 2);
+		$formLabel-padding: $blueprint-grid-margin + 1px;
+		$error-col:$lineItem-col - $formLabel-col - $formElement-col;
+		
+		@include column($lineItem-col,noMargin);
+	   	@include append-bottom($blueprint-grid-margin);
+		@include min-height(29px);
+	    position:relative;
+	  
+		.formLabel {
+			@include column($formLabel-col);
+			@include min-height(29px);
+			font-weight:600;
+			color:#333;
+			text-align:right;
+			position:relative;
+			
+			label{
+				line-height:29px;
+				@include column($formLabel-col);
+			}
+			.usedFacebookIcon{
+				@extend .profileSprite-facebook;
+				position:absolute;
+				top:0; left:0;
+				width:18px;
+				height:18px;
+			}
+		}
+		
+		.formElement {
+			@include column($formElement-col,lastCol);
+			position:relative;
+			input{
+				&[type = "text"],&[type = "password"],&[type = "textbox"]{ 
+					width: span($formElement-col) - (2 * 1px) - (2 * $blueprint-grid-margin);
+				}
+			}
+			textarea{
+				width: span($formElement-col) - (2 * 1px) - (2 * $blueprint-grid-margin);
+			}
+			select{ 
+				margin:(16px - $formLabel-padding) $blueprint-grid-margin 0 0;
+			}
+			
+			.error{
+				font-size:13px;
+				height: 100%;
+				color: red;
+				display: block;
+				clear: both;
+			}
+		}
+	}
+	
+	input{
+		&[type = "text"],&[type = "password"],&[type = "textbox"]{ 
+			background-color: #FAFAFC;
+			font-weight:400;
+			overflow: visible; 
+			vertical-align:middle; 
+			padding:$blueprint-grid-margin;
+			margin:0;
+			border:1px solid #E1E1F5;
+			@include border-radius($blueprint-grid-margin);
+
+			&:focus	{ border:1px solid #D7D7EA; }
+			&:hover	{ border:1px solid #D7D7EA; }
+		}
+	}
+	textarea{
+		@include clkFormTextarea;
+	}
+	select{ 
+		background-color: #FAFAFC;
+		@include column-base();
+		border:0;
+		height:16px;
+		border:1px solid #E1E1F5;
+		@include border-radius($blueprint-grid-margin);
+		&:focus{  
+			border:1px solid #CCC; 
+		}
+	}
+	
+	.clkButton{
+		@include button-button;
+		@include border-radius($blueprint-grid-margin);
+		padding:$blueprint-grid-margin / 2;
+		@include button-colors(#ffffff, #016799, #016799 / 2);
+		@include button-hover-colors(#ffffff, #016799 / 1.1, (#016799 / 1.1) / 2);
+		text-align:center;
+	}
+	button{
+		@extend .clkButton;
+	}
+	
+	input{
+		&[type = "button"],&[type = "submit"],&[type = "reset"]{
+			@extend .clkButton;
+		}
+	}
+	
+	fieldset{
+		border:none !important;
+		@include column($form-col,noMargin);
+		margin:0;
+		padding:0;
+		legend{
+			@extend h3;
+			font-size: 160%;
+			line-height: 180%;
+			font-weight: 500;
+		}
+	}
+	label.lblradio-block{
+		@include nowrap;
+		@include column-base();
+		font-weight:inherit;
+	}
+	.formButton	{
+	    display:inline-block;
+	    width:140px;
+	    text-align:center;
+	    background-color:#679902;
+	    padding:7px;
+	    margin:5px;
+	    -webkit-border-radius: 15px;
+	    -moz-border-radius: 15px;
+	    color:#fff;
+	    font-size:1.2em;
+	    font-weight:bold;
+	  }
+	  .formButton2 {
+	    display:inline-block;
+	    width:140px;
+	    text-align:center;
+	    background-color:#006699;
+	    padding:7px;
+	    margin:5px;
+	    -webkit-border-radius: 15px;
+	    -moz-border-radius: 15px;
+	    color:#fff;
+	    font-size:1.2em;
+	    font-weight:bold;
+	  }
+}
+
+@mixin clkFormTextarea(){
+	background-color: #FAFAFC;
+	padding:$blueprint-grid-margin;
+	margin:0;
+	border:1px solid #E1E1F5;
+	height:100px; 
+	@include border-radius($blueprint-grid-margin);
+
+	&:focus, &:hover{ 
+		 border:1px solid #BBB;
+	}
+}
