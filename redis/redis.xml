@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<install version="1.5" type="plugin" group="system">
+	<name>System - redis</name>
+	<author>Thomas Welton</author>
+	<creationDate>April 2011</creationDate>
+	<copyright>Copyright (C) 2010</copyright>
+	<license>GNU/GPL http://www.gnu.org/copyleft/gpl.html</license>
+	<authorEmail>thomaswelton@me.com</authorEmail>
+	<authorUrl>www.myapi.co.uk</authorUrl>
+	<version>1.0</version>
+	<description>Provides a single instance to a Redis datastore</description>
+	<files>
+		<filename plugin="redis">redis.php</filename>
+	</files>
+	
+	<languages>
+		<language tag="en-GB">languages/en-GB.plg_system_redis.ini</language>
+	</languages>
+	
+	<config>
+		<fields name="params">
+			<fieldset name="facebook" label="REDIS_HOST">
+				<field name="host" type="text" default="" label="Redis Host" description="" size="20" />
+				<field name="port" type="text" default="" label="Redis port" description="" size="20" />
+			</fieldset>
+		</fields>
+	</config>
+</install>

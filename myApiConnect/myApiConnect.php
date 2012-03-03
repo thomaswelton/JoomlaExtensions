@@ -42,7 +42,7 @@ class myApi extends JPlugin{
 	
 	public function __construct(& $subject, $config) {
  		parent::__construct($subject, $config);
- 		$this->loadLanguage();
+		$this->loadLanguage();
 		self::$instance = $this;
 	}
 	
@@ -72,7 +72,7 @@ class myApi extends JPlugin{
 	
 	public function getFacebook(){
 		if(!self::$facebook){		
-			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'myApiConnect'.DS.'myApiConnectFacebook.php';
+			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'myApiConnect'.DS.'facebook'.DS.'myApiConnectFacebook.php';
 			$params = plgSystemmyApiConnect::getParams();
 			$appId = self::getFbAppId();
 			$secret = self::getFbSecret();
@@ -95,17 +95,16 @@ class myApi extends JPlugin{
 	public function getTwitter(){
 		if(!self::$twitter){
 			jimport( 'joomla.application.component.helper' );
+			$params = self::getParams();
 		
-			$params = plgSystemmyApiConnect::getParams();
-		
-		  	require_once JPATH_SITE.DS.'includes'.DS.'twitter'.DS.'EpiTwitter.php';
+		  	require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'myApiConnect'.DS.'twitter'.DS.'EpiTwitter.php';
 			self::$twitter = new EpiTwitter(	$consumer_key = $params->get('consumerKey'), 
 										  $consumer_secret = $params->get('consumerSecret'), 
 										  $oauthToken = $params->get('oauthToken'), 
 										  $oauthTokenSecret = $params->get('oauthSecret')
 									  );
 		
-			self::$twitter->appUserName = $params->get('twitterUsername');
+			//self::$twitter->appUserName = $params->get('twitterUsername');
 		}
 		
 		return self::$twitter;
@@ -142,7 +141,7 @@ class plgSystemmyApiConnect extends myApi
 		
 		$u 		= JURI::getInstance( JURI::root() );
 		$port 	= ($u->getPort() == '') ? '' : ":".$u->getPort();
-		$xdPath	= $u->getScheme().'://'.$u->getHost().$port.$u->getPath().'plugins/system/myApiConnect/facebookXD.php';
+		$xdPath	= $u->getScheme().'://'.$u->getHost().$port.$u->getPath().'plugins/system/myApiConnect/facebook/facebookXD.php';
 
 		$script = <<<EOD
 /* <![CDATA[ */	
