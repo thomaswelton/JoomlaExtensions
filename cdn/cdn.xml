@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension version="1.7" type="plugin" group="system">
+	<name>plg_system_cdn</name>
+	<author>Thomas Welton</author>
+	<creationDate>February 2007</creationDate>
+	<copyright>Copyright (C) 2005 - 2011 Open Source Matters. All rights reserved.</copyright>
+	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+	<authorEmail>admin@joomla.org</authorEmail>
+	<authorUrl>www.joomla.org</authorUrl>
+	<version>1.7.0</version>
+	<description>CDN plugin</description>
+	<files>
+		<filename plugin="cdn">cdn.php</filename>
+		<filename>index.html</filename>
+	</files>
+	<languages>
+	</languages>
+	<config>
+	<fields name="params" addfieldpath="/plugins/system/cdn/fields">
+
+		<fieldset name="basic">
+			<field name="username" type="text" default="" label="Username" description="Rackspace API Username" size="20" />
+			<field name="apikey" type="text" default="" label="Rackspace API Key" description="" size="50" />
+			<field name="cdnhost" type="list" default="UK_AUTHURL" label="Rackspace Account Host" description="Rackspace account location.">
+			  <option value="UK_AUTHURL">UK</option>
+			  <option value="US_AUTHURL">USA</option>
+			</field>
+			<field name="container" type="text" default="" label="Cloud Files Container" description="The rackspace cloud files container, if the name you specify does not exist it will be made for you." size="20" />
+			
+			<field name="assetsDirectories" type="Asset" label="Asset Directories" description="Any assets included using relatvie paths in your CSS will now be relative to the CDN. You will need to upload these assets to the CDN, and use you own cache breaker if required." />
+		</fieldset>
+
+	</fields>
+	</config>
+</extension>
