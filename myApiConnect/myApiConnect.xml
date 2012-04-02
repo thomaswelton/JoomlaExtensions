@@ -11,8 +11,10 @@
 	<description>Imports the Facebook PHP and Javascript libraries and renders any social plugins inside the page.</description>
 	<files>
 		<filename plugin="myApiConnect">myApiConnect.php</filename>
-		<folder>facebook</folder>
-		<folder>twitter</folder>
+		<filename>myApiConnectFacebook.php</filename>
+		<filename>base_facebook.php</filename>
+		<filename>facebookXD.php</filename>
+		<filename>fb_ca_chain_bundle.crt</filename>
 	</files>
 	
 	<languages>
@@ -21,9 +23,11 @@
 	
 	<config>
 		<fields name="params">
-			<fieldset name="facebook" label="FACEBOOK">
+			<fieldset name="basic">
 				<field name="appId" type="text" label="PARAM_ID_LABEL" description="PARAM_ID_DESC" size="50" />
 				<field name="secret" type="text" default="" label="PARAM_SECRET_LABEL" description="PARAM_SECRET_DESC" size="50" />
+				<field name="namespace" type="text" default="" label="Namespace" description="Application namespace" size="50" />
+				
 				<field name="locale" type="list" default="en_US" label="PARAM_LOCALE_LABEL" description="PARAM_LOCALE_DESC">
 					<option value="ca_ES">Catalan</option>
 					<option value="cs_CZ">Czech</option>
@@ -134,13 +138,6 @@
 					<option value="ps_AF">Pashto</option>
 					<option value="tl_ST">Klingon</option>
 				</field>
-			</fieldset>
-			<fieldset name="twitter" label="TWITTER">
-				<field name="consumerKey" type="text" default="" label="Twitter Consumer Key" description="Consumer key used for the twitter streaming" size="30" />
-				<field name="consumerSecret" type="text" default="" label="Twitter Consumer Secret" description="Consumer secret used for the twitter streaming" size="60" />
-				<field name="oauthToken" type="text" default="" label="OAuth token" description="used for the twitter streaming" size="80" />
-				<field name="oauthSecret" type="text" default="" label="OAuth Secret" description="used for the twitter streaming" size="60" />
-				<field name="twitterUserId" type="text" default="" label="Twitter User ID" description="used for the twitter streaming" size="20" />
 			</fieldset>
 		</fields>
 	</config>

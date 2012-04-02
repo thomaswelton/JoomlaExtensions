@@ -32,18 +32,35 @@
  *****************************************************************************/
 jimport( 'joomla.plugin.plugin');
 
-
 class myApi extends JPlugin{
 	
 	private static $instance;
 	private static $facebook;
 	private static $myApiParams;
 	private static $twitter;
+	private static $ogTags = array();
+	
 	
 	public function __construct(& $subject, $config) {
  		parent::__construct($subject, $config);
-		$this->loadLanguage();
+ 		$this->loadLanguage();
 		self::$instance = $this;
+		
+		//Load com_thankyou language files
+		$lang =& JFactory::getLanguage();
+		$extension = 'com_thankyou';
+		$base_dir = JPATH_SITE;
+		$lang->load($extension, $base_dir);
+		
+		//Custom OG tags for WU
+		$ogTags = array();
+		$ogTags['fb:app_id']		= $this->getFbAppId();
+		$ogTags['og:url']			= 'http://apps.facebook.com/'.$this->getFbNamespace();
+		//$ogTags['og:title']			= '';
+		//$ogTags['og:description']	= '';
+		//$ogTags['og:image']			= '';
+		
+		$this->setOpenGraphTags($ogTags);
 	}
 	
 	public static function getInstance() { 
@@ -70,9 +87,14 @@ class myApi extends JPlugin{
 		return $params->get('secret');	
 	}
 	
+	public function getFbNamespace(){
+		$params = self::getParams();
+		return $params->get('namespace');	
+	}
+	
 	public function getFacebook(){
 		if(!self::$facebook){		
-			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'myApiConnect'.DS.'facebook'.DS.'myApiConnectFacebook.php';
+			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'myApiConnect'.DS.'myApiConnectFacebook.php';
 			$params = plgSystemmyApiConnect::getParams();
 			$appId = self::getFbAppId();
 			$secret = self::getFbSecret();
@@ -95,21 +117,31 @@ class myApi extends JPlugin{
 	public function getTwitter(){
 		if(!self::$twitter){
 			jimport( 'joomla.application.component.helper' );
-			$params = self::getParams();
 		
-		  	require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'myApiConnect'.DS.'twitter'.DS.'EpiTwitter.php';
+			$params = plgSystemmyApiConnect::getParams();
+		
+		  	require_once JPATH_SITE.DS.'includes'.DS.'twitter'.DS.'EpiTwitter.php';
 			self::$twitter = new EpiTwitter(	$consumer_key = $params->get('consumerKey'), 
 										  $consumer_secret = $params->get('consumerSecret'), 
 										  $oauthToken = $params->get('oauthToken'), 
 										  $oauthTokenSecret = $params->get('oauthSecret')
 									  );
 		
-			//self::$twitter->appUserName = $params->get('twitterUsername');
+			self::$twitter->appUserName = $params->get('twitterUsername');
 		}
 		
 		return self::$twitter;
 	}
+	
+	public function getOpenGrpahTags(){
+		return 	self::$ogTags;
+	}
+	
+	public function setOpenGraphTags($tags){
+		self::$ogTags = array_merge(self::$ogTags,$tags);
+	}
 }
+
 
 class plgSystemmyApiConnect extends myApi
 {
@@ -127,6 +159,18 @@ class plgSystemmyApiConnect extends myApi
 			return;
 	}
 	
+	function onBeforeRender(){
+		$myApi = myApi::getInstance();
+		$tags = $myApi->getOpenGrpahTags();
+		
+		$mainframe = JFactory::getApplication();
+		$document = JFactory::getDocument(); 
+		if($document->getType() != 'html' || $mainframe->isAdmin()) return;
+		
+		foreach($tags as $key => $value) $document->addCustomTag('<meta property="'.$key.'" content="'.htmlspecialchars($value).'" />');
+		
+	}
+	
 	function onAfterRender(){
 		$mainframe = JFactory::getApplication();
 		$document = JFactory::getDocument(); 
@@ -141,15 +185,18 @@ class plgSystemmyApiConnect extends myApi
 		
 		$u 		= JURI::getInstance( JURI::root() );
 		$port 	= ($u->getPort() == '') ? '' : ":".$u->getPort();
-		$xdPath	= $u->getScheme().'://'.$u->getHost().$port.$u->getPath().'plugins/system/myApiConnect/facebook/facebookXD.php';
-
+		$xdPath	= $u->getScheme().'://'.$u->getHost().$port.$u->getPath().'plugins/system/myApiConnect/facebookXD.php';
+		
+		$lang =& JFactory::getLanguage();
+		$langCode = str_replace('-','_',$lang->getTag());
+		
 		$script = <<<EOD
 /* <![CDATA[ */	
 document.getElementsByTagName("html")[0].style.display="block";	
 
 (function() {
 	var e = document.createElement('script'); e.async = true;
-	e.src = document.location.protocol + '//connect.facebook.net/en_GB/all.js';
+	e.src = document.location.protocol + '//connect.facebook.net/{$langCode}/all.js';
 	document.getElementById('fb-root').appendChild(e);
 }());
 
@@ -157,9 +204,13 @@ window.fbAsyncInit = function() {
 FB._https = (window.location.protocol == "https:");
 FB.init({appId: "{$appId}", status: true, cookie: true, xfbml: true, channelUrl: "{$xdPath}", oauth: true, authResponse: true});
 if(FB._inCanvas){
-	FB.Canvas.setAutoResize();
+	FB.Canvas.setSize(760);
+	FB.Canvas.setAutoResize(500);
 	FB.Canvas.scrollTo(0,0);
 }
+
+$(document).trigger('fbAsyncInit');
+
 };
 /* ]]> */
 EOD;
