@@ -3,7 +3,7 @@
 # author    Thomas Welton
 -------------------------------------------------------------------------*/
 defined( '_JEXEC' ) or die; 
-JHTML::_( 'behavior.mootools' );
+JHTML::_( 'behavior.framework' );
 
 $this->setGenerator('clickLabs');
 
@@ -14,23 +14,13 @@ $tpath = $this->baseurl.'/templates/'.$this->template;
 $document->addStylesheet($tpath.'/css/template.css');
 $document->addScript($tpath.'/scripts/script.js');
 
-//Find all the script declarations in the document, combine into a string to be added to the bottom of the page.
-$parameter_script = 'script';
-$header = $document->getHeadData();
-$scriptDeclarations = '';
-
-foreach($header[$parameter_script] as $key=>$value){
-	$scriptDeclarations .= $value;
-}
-$document->_script = array();
-
 ?>
 <!doctype html>
 <!--[if lt IE 7]> <html class="ie6 oldie" lang="<?=$this->language?>"> <![endif]-->
 <!--[if IE 7]>    <html class="ie7 oldie" lang="<?=$this->language?>"> <![endif]-->
 <!--[if IE 8]>    <html class="ie8 oldie" lang="<?=$this->language?>"> <![endif]-->
-<!--[if gt IE 8]><!-->  <html lang="<?=$this->language?>" xmlns:og="http://ogp.me/ns#" xmlns:fb="https://www.facebook.com/2008/fbml"> <!--<![endif]-->
-	<head prefix="og: http://ogp.me/ns# fb: http://ogp.me/ns/fb# website: http://ogp.me/ns/website#">
+<!--[if gt IE 8]><!-->  <html lang="<?=$this->language?>"> <!--<![endif]-->
+	<head>
 		<jdoc:include type="head" />
 	</head>
 	<body class="">
