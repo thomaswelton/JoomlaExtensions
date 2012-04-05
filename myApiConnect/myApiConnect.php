@@ -61,35 +61,21 @@ class myApi extends JPlugin{
 	    return self::$instance; 
 	}
 	
-	public function getParams(){
-		if(!self::$myApiParams){
-			$plugin = JPluginHelper::getPlugin('system', 'myApiConnect');
-			self::$myApiParams = new JRegistry();
-			self::$myApiParams->loadJSON($plugin->params);
-		}
-		
-		return self::$myApiParams;	
-	}
-	
 	public function getFbAppId(){
-		$params = self::getParams();
-		return $params->get('appId');	
+		return $this->params->get('appId');	
 	}
 	
 	public function getFbSecret(){
-		$params = self::getParams();
-		return $params->get('secret');	
+		return $this->params->get('secret');	
 	}
 	
 	public function getFbNamespace(){
-		$params = self::getParams();
-		return $params->get('namespace');	
+		return $this->params->get('namespace');		
 	}
 	
 	public function getFacebook(){
 		if(!self::$facebook){		
 			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'myApiConnect'.DS.'myApiConnectFacebook.php';
-			$params = plgSystemmyApiConnect::getParams();
 			$appId = self::getFbAppId();
 			$secret = self::getFbSecret();
 			if( $appId == '' || $secret == ''){
@@ -112,16 +98,14 @@ class myApi extends JPlugin{
 		if(!self::$twitter){
 			jimport( 'joomla.application.component.helper' );
 		
-			$params = plgSystemmyApiConnect::getParams();
-		
 		  	require_once JPATH_SITE.DS.'includes'.DS.'twitter'.DS.'EpiTwitter.php';
-			self::$twitter = new EpiTwitter(	$consumer_key = $params->get('consumerKey'), 
-										  $consumer_secret = $params->get('consumerSecret'), 
-										  $oauthToken = $params->get('oauthToken'), 
-										  $oauthTokenSecret = $params->get('oauthSecret')
+			self::$twitter = new EpiTwitter(	$consumer_key = $this->params->get('consumerKey'), 
+										  $consumer_secret = $this->params->get('consumerSecret'), 
+										  $oauthToken = $this->params->get('oauthToken'), 
+										  $oauthTokenSecret = $this->params->get('oauthSecret')
 									  );
 		
-			self::$twitter->appUserName = $params->get('twitterUsername');
+			self::$twitter->appUserName = $this->params->get('twitterUsername');
 		}
 		
 		return self::$twitter;
