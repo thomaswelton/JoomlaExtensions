@@ -46,12 +46,6 @@ class myApi extends JPlugin{
  		$this->loadLanguage();
 		self::$instance = $this;
 		
-		//Load com_thankyou language files
-		$lang =& JFactory::getLanguage();
-		$extension = 'com_thankyou';
-		$base_dir = JPATH_SITE;
-		$lang->load($extension, $base_dir);
-		
 		//Custom OG tags for WU
 		$ogTags = array();
 		$ogTags['fb:app_id']		= $this->getFbAppId();
@@ -209,7 +203,7 @@ if(FB._inCanvas){
 	FB.Canvas.scrollTo(0,0);
 }
 
-$(document).trigger('fbAsyncInit');
+$(document).fireEvent('fbAsyncInit');
 
 };
 /* ]]> */
@@ -225,6 +219,14 @@ EOD;
 		$fbScript = $dom->createElement('script',$script);
 		$fbScript->setAttribute('type','text/javascript');
 		$body->appendChild($fbScript);
+		
+		//Add FB prefix to the head and html tag
+		$head = $dom->getElementsByTagName('head')->item(0);
+		$head->setAttribute('prefix','og: http://ogp.me/ns# fb: http://ogp.me/ns/fb# website: http://ogp.me/ns/website#');
+		
+		$htmlTag = $dom->getElementsByTagName('html')->item(0);
+		$htmlTag->setAttribute('xmlns:og','http://ogp.me/ns#');
+		$htmlTag->setAttribute('xmlns:fb','https://www.facebook.com/2008/fbml');
 		
 		$this->setBody();	
 	}
