@@ -21,25 +21,40 @@ class plgSystemCdn extends JPlugin
 	function onAfterRender(){
 		$mainframe 	= JFactory::getApplication();
 		$document 	= JFactory::getDocument();
-        if ($mainframe->getName() != 'site' || $document->getType() != 'html' || (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest')) {
+        if ($mainframe->getName() != 'site' || $document->getType() != 'html') {
             return true;
         }
 		
 		set_include_path(get_include_path() . PATH_SEPARATOR . JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'cloudfiles');
 		require('cloudfiles.php');
 		
-		$this->uploadDirectories();
-		$this->parseImages();
+		if($this->params->get('cdnImages')){
+			$this->parseImages();
+		}
 		
-		$this->compressStyles();
-		$this->combinedStyles();
-		$this->cdnCss();
+		if($this->params->get('compressStyles')){
+			$this->compressStyles();
+		}
+		if($this->params->get('combinedStyles')){
+			$this->combinedStyles();
+		}
+		if($this->params->get('cdnCss')){
+			$this->uploadDirectories();
+			$this->cdnCss();
+		}
+		if($this->params->get('compressScripts')){
+			$this->compressScripts();
+		}
+		if($this->params->get('combineScripts')){
+			$this->combineScripts();
+		}
+		if($this->params->get('cdnScripts')){
+			$this->cdnScripts();
+		}
 		
-		$this->compressScripts();
-		$this->combineScripts();
-		$this->cdnScripts();
-		$this->deferScripts();
-		
+		if($this->params->get('deferScripts') && !(!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest')){
+			$this->deferScripts();
+		}
 		//$this->addManifest();
 		
 		$this->setBody();
@@ -106,9 +121,7 @@ class plgSystemCdn extends JPlugin
 				$assetPath = substr($u->getPath(),strlen($siteRoot->getPath()));
 				
 				$cdnUrl = $this->getObjectUrl($assetPath,false);
-				//echo $cdnUrl."<br />";
 			}
-		//	die;
 		}	
 	}
 	
@@ -340,7 +353,7 @@ class plgSystemCdn extends JPlugin
 		if($combinedUrl === false){
 			$combinedScripts = '';
 			foreach($combinedScritpPaths as $index => $scriptPath){
-				$combinedScripts .= file_get_contents(JPATH_SITE.DS.$scriptPath);
+				$combinedScripts .= ' '.file_get_contents(JPATH_SITE.DS.$scriptPath);
 			}
 			
 			if(!JFolder::exists('compressed')){
@@ -386,37 +399,36 @@ class plgSystemCdn extends JPlugin
 		}
 		
 		if(sizeof($scriptDeclarations['bottom']) > 0){
-			$combinedScript          = '';
+			$combinedScript          = " ";
 			foreach($scriptDeclarations['bottom'] as $el){
-				$combinedScript .= $el->nodeValue;
+				$combinedScript .= " ".$el->nodeValue;
 			}
-			$initScript            = $combinedScript;
+			$initScript = $combinedScript;
 			ob_start();
 				include(JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'initjs.php');
-			$wrappedScript         = ob_get_contents();
+			$wrappedScript  = ob_get_contents();
 			ob_end_clean();
-
+			
 			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'jsmin.php';
+			$wrappedScript = JSMin::minify($wrappedScript);
 
-			$minifiedWrappedScript = JSMin::minify($wrappedScript);
-
-			$scriptEl              = $dom->createElement('script',$minifiedWrappedScript);
+			$scriptEl              = $dom->createElement('script',$wrappedScript);
 			$scriptEl->setAttribute('type','text/javascript');
 			$body = $dom->getElementsByTagName('body')->item(0);
 			$body->appendChild($scriptEl);
 		}
 
 		if(sizeof($scriptDeclarations['top']) > 0){
-			$combinedScript          = '';
+			$combinedScript          = "";
 			foreach($scriptDeclarations['top'] as $el){
-				$combinedScript .= $el->nodeValue;
+				$combinedScript .= " ".$el->nodeValue;
 			}
 			$topScript = $combinedScript;
+			
 			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'jsmin.php';
-
-			$minifiedTopScript = JSMin::minify($topScript);
-
-			$scriptEl = $dom->createElement('script',$minifiedTopScript);
+			$topScript = JSMin::minify($topScript);
+				
+			$scriptEl = $dom->createElement('script',$topScript);
 			$scriptEl->setAttribute('type','text/javascript');
 
 			$head = $dom->getElementsByTagName('head')->item(0);

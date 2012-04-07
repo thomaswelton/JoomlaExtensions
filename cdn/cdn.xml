@@ -12,13 +12,56 @@
 	<files>
 		<filename plugin="cdn">cdn.php</filename>
 		<filename>index.html</filename>
+		<filename>CommentPreserver.php</filename>
+		<filename>CSS.php</filename>
+		<filename>HTML.php</filename>
+		<filename>initjs.php</filename>
+		<filename>jsmin.php</filename>
+		
+		<folder>cloudfiles</folder>
+		<folder>CSS</folder>
+		
 	</files>
 	<languages>
 	</languages>
 	<config>
 	<fields name="params" addfieldpath="/plugins/system/cdn/fields">
-
-		<fieldset name="basic">
+		<fieldset name="Basic">
+			<field name="compressStyles" type="radio" default="0" label="Compress Styles" description="Compress and minify CSS stylesheets">
+			  <option value="0">No</option>
+			  <option value="1">Yes</option>
+			</field>
+			<field name="combinedStyles" type="radio" default="0" label="Combine Styles" description="Combine multiple CSS styelsheets into one single file">
+			  <option value="0">No</option>
+			  <option value="1">Yes</option>
+			</field>
+			<field name="compressScripts" type="radio" default="0" label="Compress Javascript" description="Compress and minify Javascript files">
+			  <option value="0">No</option>
+			  <option value="1">Yes</option>
+			</field>
+			<field name="combineScripts" type="radio" default="0" label="Combine Javascript" description="Combine multiple Javascript files into one single file">
+			  <option value="0">No</option>
+			  <option value="1">Yes</option>
+			</field>
+			<field name="deferScripts" type="radio" default="0" label="Defer Javascript" description="Defer to loading of Javascript">
+			  <option value="0">No</option>
+			  <option value="1">Yes</option>
+			</field>
+			
+			<field name="cdnImages" type="radio" default="0" label="Images CDN" description="Store images on the CDN">
+			  <option value="0">No</option>
+			  <option value="1">Yes</option>
+			</field>
+			<field name="cdnCss" type="radio" default="0" label="CSS CDN" description="Store CSS on the CDN">
+			  <option value="0">No</option>
+			  <option value="1">Yes</option>
+			</field>
+			<field name="cdnScripts" type="radio" default="0" label="Javscript CDN" description="Store Javscript files on the CDN">
+			  <option value="0">No</option>
+			  <option value="1">Yes</option>
+			</field>
+			
+			
 			<field name="username" type="text" default="" label="Username" description="Rackspace API Username" size="20" />
 			<field name="apikey" type="text" default="" label="Rackspace API Key" description="" size="50" />
 			<field name="cdnhost" type="list" default="UK_AUTHURL" label="Rackspace Account Host" description="Rackspace account location.">
