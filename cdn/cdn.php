@@ -14,18 +14,11 @@ class plgSystemCdn extends JPlugin
 	var $mainifestFiles	= array();
 	
 	
-	function __construct(& $subject, $config)
-	{
+	function __construct(& $subject, $config){
 		parent::__construct($subject, $config);
 	}
-	
-	function onAfterInitialise()
-	{
-		
-	}
 
-	function onAfterRender()
-	{
+	function onAfterRender(){
 		$mainframe 	= JFactory::getApplication();
 		$document 	= JFactory::getDocument();
         if ($mainframe->getName() != 'site' || $document->getType() != 'html' || (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest')) {
@@ -39,10 +32,13 @@ class plgSystemCdn extends JPlugin
 		$this->parseImages();
 		
 		$this->compressStyles();
-		$this->parseCSS();
+		$this->combinedStyles();
+		$this->cdnCss();
 		
 		$this->compressScripts();
-		$this->parseScripts();
+		$this->combineScripts();
+		$this->cdnScripts();
+		$this->deferScripts();
 		
 		//$this->addManifest();
 		
@@ -92,6 +88,30 @@ class plgSystemCdn extends JPlugin
 		
 	}
 	
+	
+	public function uploadDirectories(){
+		$app = JFactory::getApplication();
+		$templateDir = JPATH_SITE.DS.'templates'.DS.$app->getTemplate();
+		
+		$dirs = $this->params->get('assetsDirectories');
+		
+		foreach($dirs as $dir){
+			$assets = JFolder::files($templateDir.DS.$dir, '', true,true);
+			$stripPath = $templateDir.DS.$dir;
+			foreach($assets as $asset){	
+				$asset = substr($asset,strlen($stripPath));
+				$u =& JURI::getInstance( JURI::root().'templates/'.$app->getTemplate().'/'.$dir.$asset);
+				
+				$siteRoot = JURI::getInstance(JURI::root());
+				$assetPath = substr($u->getPath(),strlen($siteRoot->getPath()));
+				
+				$cdnUrl = $this->getObjectUrl($assetPath,false);
+				//echo $cdnUrl."<br />";
+			}
+		//	die;
+		}	
+	}
+	
 	public function compressStyles(){
 		$dom = $this->getDOM();
 		$linkTags = $dom->getElementsByTagName('link');
@@ -101,11 +121,12 @@ class plgSystemCdn extends JPlugin
 				
 				if(JURI::isInternal($cssFile)){
 					$u =& JURI::getInstance( $cssFile );
-					$cssPath = $u->getPath();
+					$siteRoot = JURI::getInstance(JURI::root());
+					$cssPath = substr($u->getPath(),strlen($siteRoot->getPath()));
 					
 					$path_parts = pathinfo($cssPath);
 					$styleHash =  hash_file('md5',JPATH_SITE.DS.$cssPath); 
-					$compressedPath = DS.'compressed'.$path_parts['dirname'].DS.$path_parts['filename'].'.compressed-'.$styleHash.'.'.$path_parts['extension'];
+					$compressedPath = DS.'compressed'.DS.$path_parts['dirname'].DS.$path_parts['filename'].'.compressed-'.$styleHash.'.'.$path_parts['extension'];
 					
 					if(!file_exists(JPATH_SITE.$compressedPath)){
 						//Create compressed files
@@ -133,6 +154,103 @@ class plgSystemCdn extends JPlugin
 		}
 	}
 	
+	
+	public function combinedStyles(){
+		$dom = $this->getDOM();
+		$linkTags = $dom->getElementsByTagName('link');
+		$cssFiles = array();
+		
+		foreach($linkTags as $link){
+			if($link->getAttribute('type') == 'text/css'){
+				$cssFile = $link->getAttribute('href');
+				try{
+					if(JURI::isInternal($cssFile)){
+						$u =& JURI::getInstance( $cssFile );
+						if(sizeof($u->getQuery(true)) == 0){
+							$cssFiles[] = $link;
+						}else{
+							$this->log('Dynamic file not combined '.$u->getPath().'?'.$u->getQuery());
+						}
+					}
+				}catch(Exception $e){
+					error_log('fail '.$cssFile.' - '.$e->getMessage());
+				}
+			}
+			
+		}
+		
+		//Combine all CSS files
+		$combinedCssPaths = array();
+		$combinedCssName = '';
+		foreach($cssFiles as $link){
+			$cssFile = $link->getAttribute('href');
+			$u =& JURI::getInstance( $cssFile );
+			$cssPath = $u->getPath();
+			$combinedCssPaths[] = $cssPath;
+			$combinedCssName .= hash_file('md5',JPATH_SITE.DS.$cssPath);
+		}
+		
+		$cache = $this->getCache('combined_css');
+		$combinedPath = $cache->get($combinedCssName);
+		if($combinedPath === false){
+			$combinedCss = '';
+			foreach($combinedCssPaths as $cssPath){
+				$combinedCss .= file_get_contents(JPATH_SITE.DS.$cssPath);
+			}
+
+			if(!JFolder::exists('compressed')){
+				mkdir('compressed',0777,true);
+			}
+
+			$combinedPath = DS.'compressed'.DS.$combinedCssName.'.css';
+
+			file_put_contents(JPATH_SITE.DS.$combinedPath,$combinedCss);
+			$cache->store($combinedPath, $combinedCssName);
+		}
+		
+		foreach($cssFiles as $link){
+			$link->parentNode->removeChild($link);
+		}
+
+		$head = $dom->getElementsByTagName('head')->item(0);
+
+		$linkEl = $dom->createElement('link');
+		$linkEl->setAttribute('href',$combinedPath);
+		$linkEl->setAttribute('type','text/css');
+		$linkEl->setAttribute('rel','stylesheet dns-prefetch');
+		$head->appendChild($linkEl);		
+	}
+	
+	public function cdnCss(){
+		$dom = $this->getDOM();
+		$linkTags = $dom->getElementsByTagName('link');
+		$cache = $this->getCache('cdn_urls');
+		
+		foreach($linkTags as $link){
+			if($link->getAttribute('type') == 'text/css'){
+				$cssFile = $link->getAttribute('href');
+				if(JURI::isInternal($cssFile)){
+					$u =& JURI::getInstance( $cssFile );
+					if(sizeof($u->getQuery(true)) == 0){
+						$cdnPath = $cache->get($cssFile);
+						if($cdnPath == false){
+							$cdnUrl = $this->getObjectUrl($cssFile,true);
+							if($cdnUrl){
+								$cdnPath = $cdnUrl;
+								$cache->store($cdnUrl, $cssFile);
+							}else{
+								error_log('Fatal error storing CSS to the cloud');
+							}
+						}
+						
+						$link->setAttribute('href',$cdnPath);
+					}
+				}
+			}
+			$link = $this->setRelPrefetch($link);
+		}
+	}
+	
 	public function compressScripts(){
 		$dom = $this->getDOM();
 		$scriptTags = $dom->getElementsByTagName('script');
@@ -141,11 +259,12 @@ class plgSystemCdn extends JPlugin
 				$scriptFile = $script->getAttribute('src');
 				if(JURI::isInternal($scriptFile)){
 					$u =& JURI::getInstance( $scriptFile );
-					$scriptPath = $u->getPath();
+					$siteRoot = JURI::getInstance(JURI::root());
+					$scriptPath = substr($u->getPath(),strlen($siteRoot->getPath()));
 					
 					$path_parts = pathinfo($scriptPath);
 					$scriptHash =  hash_file('md5',JPATH_SITE.DS.$scriptPath); 
-					$compressedPath = DS.'compressed'.$path_parts['dirname'].DS.$path_parts['filename'].'.compressed-'.$scriptHash.'.'.$path_parts['extension'];
+					$compressedPath = DS.'compressed'.DS.$path_parts['dirname'].DS.$path_parts['filename'].'.compressed-'.$scriptHash.'.'.$path_parts['extension'];
 					
 					if(!file_exists(JPATH_SITE.$compressedPath)){
 						//Create compressed files
@@ -173,24 +292,7 @@ class plgSystemCdn extends JPlugin
 		}
 	}
 	
-	public function uploadDirectories(){
-		$app = JFactory::getApplication();
-		$templateDir = JPATH_SITE.DS.'templates'.DS.$app->getTemplate();
-		
-		$dirs = $this->params->get('assetsDirectories');
-		
-		foreach($dirs as $dir){
-			$assets = JFolder::files($templateDir.DS.$dir, '', false);
-		
-			foreach($assets as $asset){	
-				$u =& JURI::getInstance( '/templates/'.$app->getTemplate().'/'.$dir.'/'.$asset);
-				$assetPath = $u->getPath();
-				$cdnUrl = $this->getObjectUrl($assetPath);
-			}
-		}	
-	}
-	
-	public function parseScripts(){
+	public function combineScripts(){
 		$dom = $this->getDOM();
 		$scriptTags = $dom->getElementsByTagName('script');
 		
@@ -203,40 +305,34 @@ class plgSystemCdn extends JPlugin
 			
 			if($script->getAttribute('src') !== ''){
 				$scriptFile = $script->getAttribute('src');
-				
+
 				if(JURI::isInternal($scriptFile)){
 					$u =& JURI::getInstance( $scriptFile );
-					
+
 					if(sizeof($u->getQuery(true)) == 0){
 						$scriptFiles[] = $script;
 					}else{
 						$this->log('Dynamic file not stored to CDN '.$u->getPath().'?'.$u->getQuery());
 					}
-				}else{
-					$script = $this->setRelPrefetch($script);
 				}
 			}else{
-				$scriptDeclarations[] = $script;	
+				$position = $script->getAttribute('data-cdn-position') == '' ? 'bottom' : $script->getAttribute('data-cdn-position');
+				$scriptDeclarations[$position][] = $script;
 			}
 		}
 		
 		$body = $dom->getElementsByTagName('body')->item(0);
 		
-		
 		//Combine all javascript files
 		$combinedScritpPaths = array();
 		$combinedScriptsName = '';
+		
 		foreach($scriptFiles as $script){
 			$scriptFile = $script->getAttribute('src');
 			$u =& JURI::getInstance( $scriptFile );
 			$scriptPath = $u->getPath();
 			$combinedScritpPaths[] = $scriptPath;
 			$combinedScriptsName .= hash_file('md5',JPATH_SITE.DS.$scriptPath);
-		}
-		
-		//Remove all the element that are now combined
-		foreach( $removeList as $domElement ){ 
-		  $domElement->parentNode->removeChild($domElement); 
 		}
 		
 		$cache = $this->getCache();
@@ -252,120 +348,124 @@ class plgSystemCdn extends JPlugin
 			}
 
 			$combinedPath = DS.'compressed'.DS.$combinedScriptsName.'.js';
-			$combinedScripts .= "\ncdnInit();";
+			$combinedScripts .= "\n try{ cdnInit(); }catch(e){}";
 
 			file_put_contents(JPATH_SITE.DS.$combinedPath,$combinedScripts);
+			$combinedUrl = $combinedPath;
+			$cache->store($combinedPath, $combinedScriptsName);
+		}
+		
+		foreach($scriptFiles as $script){
+			$script->parentNode->removeChild($script);	
+		}
+		
+		$head = $dom->getElementsByTagName('head')->item(0);
 
-			$cdnUrl = $this->getObjectUrl($combinedPath,true);
-			if($cdnUrl){
-				$combinedUrl = $cdnUrl;
-				$cache->store($cdnUrl, $combinedScriptsName);
-				
-			}else{
-				error_log('Fatal error storing combined JS to the cloud');
-			}
-		}
-		
-		$combinedScript = '';
-		foreach($scriptDeclarations as $el){
-			$combinedScript .= $el->nodeValue;
-		}
-		array_push($this->mainifestFiles,$combinedUrl);
-		$initScriptUrl = $combinedUrl;
-		$initScript = $combinedScript;
-		ob_start();
-			include(JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'initjs.php');
-		$wrappedScript = ob_get_contents();
-		ob_end_clean();
-		
-		require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'jsmin.php';
-		
-		$minifiedWrappedScript = JSMin::minify($wrappedScript);
-		
-		$scriptEl = $dom->createElement('script',$minifiedWrappedScript);
+		$scriptEl = $dom->createElement('script');
+		$scriptEl->setAttribute('src',$combinedUrl);
 		$scriptEl->setAttribute('type','text/javascript');
-		$body->appendChild($scriptEl);
-	
+		$head->appendChild($scriptEl);
+		
 	}
 	
-	public function parseCSS(){
+	public function deferScripts(){
 		$dom = $this->getDOM();
-		$linkTags = $dom->getElementsByTagName('link');
-		$cssFiles = array();
+		$scriptTags = $dom->getElementsByTagName('script');
 		
-		foreach($linkTags as $link){
-			if($link->getAttribute('type') == 'text/css'){
-				$cssFile = $link->getAttribute('href');
-				try{
-					if(JURI::isInternal($cssFile)){
-						$u =& JURI::getInstance( $cssFile );
-						if(sizeof($u->getQuery(true)) == 0){
-							$cssFiles[] = $link;
-						}else{
-							$this->log('Dynamic file not stored to CDN '.$u->getPath().'?'.$u->getQuery());
-						}
+		$scriptDeclarations = array();
+		$removeList = array(); 
+		
+		foreach($scriptTags as $script){
+			$removeList[] = $script;
+			if($script->getAttribute('src') == ''){
+				$position = $script->getAttribute('data-cdn-position') == '' ? 'bottom' : $script->getAttribute('data-cdn-position');
+				$scriptDeclarations[$position][] = $script;
+			}else{
+				$initScriptUrl = $script->getAttribute('src');
+			}
+		}
+		
+		if(sizeof($scriptDeclarations['bottom']) > 0){
+			$combinedScript          = '';
+			foreach($scriptDeclarations['bottom'] as $el){
+				$combinedScript .= $el->nodeValue;
+			}
+			$initScript            = $combinedScript;
+			ob_start();
+				include(JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'initjs.php');
+			$wrappedScript         = ob_get_contents();
+			ob_end_clean();
+
+			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'jsmin.php';
+
+			$minifiedWrappedScript = JSMin::minify($wrappedScript);
+
+			$scriptEl              = $dom->createElement('script',$minifiedWrappedScript);
+			$scriptEl->setAttribute('type','text/javascript');
+			$body = $dom->getElementsByTagName('body')->item(0);
+			$body->appendChild($scriptEl);
+		}
+
+		if(sizeof($scriptDeclarations['top']) > 0){
+			$combinedScript          = '';
+			foreach($scriptDeclarations['top'] as $el){
+				$combinedScript .= $el->nodeValue;
+			}
+			$topScript = $combinedScript;
+			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'jsmin.php';
+
+			$minifiedTopScript = JSMin::minify($topScript);
+
+			$scriptEl = $dom->createElement('script',$minifiedTopScript);
+			$scriptEl->setAttribute('type','text/javascript');
+
+			$head = $dom->getElementsByTagName('head')->item(0);
+			$head->appendChild($scriptEl);
+		}
+		
+		foreach($removeList as $script){
+			$script->parentNode->removeChild($script);	
+		}
+	}
+	
+	public function cdnScripts(){
+		$scripts = $this->getInternalScripts();
+		$cache = $this->getCache();
+		foreach($scripts as $script){
+			$srciptSrc = $script->getAttribute('src');
+			$u =& JURI::getInstance( $srciptSrc );
+			if(sizeof($u->getQuery(true)) == 0){
+				$cdnPath = $cache->get($srciptSrc);
+				if($cdnPath == false){
+					$cdnUrl = $this->getObjectUrl($srciptSrc,true);
+					if($cdnUrl){
+						$cdnPath = $cdnUrl;
+						$cache->store($cdnUrl, $srciptSrc);
 					}else{
-						$link = $this->setRelPrefetch($link);
+						error_log('Fatal error storing JS to the cloud');
 					}
-				}catch(Exception $e){
-					error_log('fail '.$cssFile.' - '.$e->getMessage());
+				}
+				
+				$script->setAttribute('src',$cdnPath);
+			}
+		}
+	}
+	
+	public function getInternalScripts(){
+		$dom = $this->getDOM();
+		$scriptTags = $dom->getElementsByTagName('script');
+		
+		$scriptFiles = array();
+
+		foreach($scriptTags as $script){
+			if($script->getAttribute('src') !== ''){
+				$scriptFile = $script->getAttribute('src');
+				if(JURI::isInternal($scriptFile)){
+					$scriptFiles[] = $script;
 				}
 			}
-			
 		}
-		
-		//Combine all javascript files
-		$combinedCssPaths = array();
-		$combinedCssName = '';
-		foreach($cssFiles as $link){
-			$cssFile = $link->getAttribute('href');
-			$u =& JURI::getInstance( $cssFile );
-			$cssPath = $u->getPath();
-			$combinedCssPaths[] = $cssPath;
-			$combinedCssName .= hash_file('md5',JPATH_SITE.DS.$cssPath);
-		}
-		
-		$cache = $this->getCache();
-		$combinedUrl = $cache->get($combinedCssName);
-		if($combinedUrl === false){
-			$combinedCss = '';
-			foreach($combinedCssPaths as $cssPath){
-				$combinedCss .= file_get_contents(JPATH_SITE.DS.$cssPath);
-			}
-
-			if(!JFolder::exists('compressed')){
-				mkdir('compressed',0777,true);
-			}
-
-			$combinedPath = DS.'compressed'.DS.$combinedCssName.'.css';
-
-			file_put_contents(JPATH_SITE.DS.$combinedPath,$combinedCss);
-
-			$cdnUrl = $this->getObjectUrl($combinedPath,true);
-			if($cdnUrl){
-				$combinedUrl = $cdnUrl;
-				$cache->store($cdnUrl, $combinedCssName);
-			}else{
-				error_log('Fatal error storing combined CSS to the cloud');
-			}
-		}
-		
-		//Recheck as CDn store may have failed
-		if($combinedUrl !== false){
-			foreach($cssFiles as $link){
-				$link->parentNode->removeChild($link);
-			}
-			
-			$head = $dom->getElementsByTagName('head')->item(0);
-			
-			$linkEl = $dom->createElement('link');
-			$linkEl->setAttribute('href',$combinedUrl);
-			$linkEl->setAttribute('type','text/css');
-			$linkEl->setAttribute('rel','stylesheet dns-prefetch');
-			$head->appendChild($linkEl);
-			
-			array_push($this->mainifestFiles,$combinedUrl);
-		}	
+		return $scriptFiles;
 	}
 	
 	public function parseImages(){
@@ -376,7 +476,8 @@ class plgSystemCdn extends JPlugin
 			$imgSrc = $image->getAttribute('src');
 			if(JURI::isInternal($imgSrc)){
 				$u =& JURI::getInstance( $imgSrc );
-				$imagePath = $u->getPath();
+				$siteRoot = JURI::getInstance(JURI::root());
+				$imagePath = substr($u->getPath(),strlen($siteRoot->getPath()));
 
 				$cdnUrl = $this->getObjectUrl($imagePath,true);
 				if($cdnUrl){
@@ -393,7 +494,7 @@ class plgSystemCdn extends JPlugin
 		}
 	}
 	
-	public function getObjectUrl($objectPath,$lastModified = ''){
+	public function getObjectUrl($objectPath,$cacheBreak = true){
 		$objectPath = (substr($objectPath,0,1) == '/') ? substr($objectPath,1) : $objectPath;
 		$headers = array();
 		
@@ -402,15 +503,17 @@ class plgSystemCdn extends JPlugin
 		$headers['Cache-Control'] = "max-age={$offset}, must-revalidate";
 		$headers['Expires'] = gmdate( 'D, d M Y H:i:s', time() + $offset ) . ' GMT';
 		
-		
 		$objectName = ($objectPath[0] == "/") ? substr($objectPath,1) : $objectPath;
-		$nameParts = explode('.',$objectName);
 		
-		//This might have to be optional, but the images need to be in the compressed dir if the css is being compressed
-		$objectName = $nameParts[0];
+		if($cacheBreak){
+			$nameParts = explode('.',$objectName);
 		
-		if($lastModified) $objectName .= '-'.$lastModified;
-		$objectName .= '.'.$nameParts[1];
+			//This might have to be optional, but the images need to be in the compressed dir if the css is being compressed
+			$objectName = $nameParts[0];
+		
+			$objectName .= '-'.$lastModified;
+			$objectName .= '.'.$nameParts[1];
+		}
 		
 		$cache = $this->getCache();
 		
