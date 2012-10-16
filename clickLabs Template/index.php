@@ -3,15 +3,15 @@
 # author    Thomas Welton
 -------------------------------------------------------------------------*/
 defined( '_JEXEC' ) or die; 
-JHTML::_( 'behavior.framework' );
+JHTML::_( 'behavior.mootools' );
 
 $this->setGenerator('clickLabs');
-
 $document = JFactory::getDocument(); 
 
 //Add stylesheet and JS via the Joomla document object,
 $tpath = $this->baseurl.'/templates/'.$this->template;
 $document->addStylesheet($tpath.'/css/template.css');
+$document->addScript($tpath.'/scripts/modernizr.js');
 $document->addScript($tpath.'/scripts/script.js');
 
 ?>
@@ -24,13 +24,13 @@ $document->addScript($tpath.'/scripts/script.js');
 		<jdoc:include type="head" />
 	</head>
 	<body class="">
-		
 		<div id="container">
-			<jdoc:include type="message" />
-			<jdoc:include type="component" />
+			<div id="content">
+				<jdoc:include type="message" />
+				<jdoc:include type="component" />
+			</div>
 		</div>
 		
 		<jdoc:include type="modules" name="debug" />
-		<script type="text/javascript"><?php echo $scriptDeclarations; ?></script>
 	</body>
 </html>

@@ -2,33 +2,10 @@
 
 $canvas-width: $blueprint-container-size;
 
-body{
-	overflow:visible;
-	
-	font-family: Verdana,Arial,Geneva,Helvetica,sans-serif;
-	font-size: 12px;
-	line-height:17px;
-	
-	a {
-		text-decoration: none;
-		
-		&.visited {
-			color: #fff;
-		}
-	}
-	
-	&.show-grid{
-		#container{
-			@include column-grid-background($blueprint-grid-columns, $blueprint-grid-width, $blueprint-grid-margin);
-			
-			*{
-				background-color:none;
-			}
-		}
-	}
+html,body{
+	min-height:100%;
 }
 
 #container{
 	@include container;
-	@include prepend-top($blueprint-grid-margin * 2);
 }
