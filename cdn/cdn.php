@@ -19,6 +19,11 @@ class plgSystemCdn extends JPlugin
 	}
 
 	function onAfterRender(){
+		$p = JProfiler::getInstance('Application');
+
+		$p->mark('CDN System Plugin Fired');
+		
+		
 		$mainframe 	= JFactory::getApplication();
 		$document 	= JFactory::getDocument();
         if ($mainframe->getName() != 'site' || $document->getType() != 'html') {
@@ -30,34 +35,44 @@ class plgSystemCdn extends JPlugin
 		
 		if($this->params->get('cdnImages')){
 			$this->parseImages();
+			$p->mark('parse images done');
 		}
 		
-		if($this->params->get('compressStyles')){
-			$this->compressStyles();
-		}
 		if($this->params->get('combinedStyles')){
 			$this->combinedStyles();
+			$p->mark('combine styles done');
+		}
+		if($this->params->get('compressStyles')){
+			$this->compressStyles();
+			$p->mark('compress styles done');
 		}
 		if($this->params->get('cdnCss')){
 			$this->uploadDirectories();
+			$p->mark('cdn directories done');
 			$this->cdnCss();
+			$p->mark('cdn css done');
 		}
 		if($this->params->get('compressScripts')){
 			$this->compressScripts();
+			$p->mark('compress scripts done');
 		}
 		if($this->params->get('combineScripts')){
 			$this->combineScripts();
+			$p->mark('combine scripts done');
 		}
 		if($this->params->get('cdnScripts')){
 			$this->cdnScripts();
+			$p->mark('cdn scripts done');
 		}
 		
 		if($this->params->get('deferScripts') && !(!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest')){
 			$this->deferScripts();
+			$p->mark('defer scripts done');
 		}
 		//$this->addManifest();
 		
 		$this->setBody();
+		$p->mark('CDN plugin done');
 	}
 	
 	private function log($msg){
@@ -139,7 +154,7 @@ class plgSystemCdn extends JPlugin
 					
 					$path_parts = pathinfo($cssPath);
 					$styleHash =  hash_file('md5',JPATH_SITE.DS.$cssPath); 
-					$compressedPath = DS.'compressed'.DS.$path_parts['dirname'].DS.$path_parts['filename'].'.compressed-'.$styleHash.'.'.$path_parts['extension'];
+					$compressedPath = DS.$path_parts['dirname'].DS.$path_parts['filename'].'.plg_system_cdn_generated.compressed-'.$styleHash.'.'.$path_parts['extension'];
 					
 					if(!file_exists(JPATH_SITE.$compressedPath)){
 						//Create compressed files
@@ -157,11 +172,12 @@ class plgSystemCdn extends JPlugin
 							mkdir($compressedFolder,0777,true);
 						}
 						
-						file_put_contents(JPATH_SITE.$compressedPath,$minified);						
+						if(JFile::write(JPATH_SITE.$compressedPath,$minified, true)){
+							$link->setAttribute('href',$compressedPath);
+						}					
+					}else{
+						$link->setAttribute('href',$compressedPath);
 					}
-					
-					$link->setAttribute('href',$compressedPath);
-					
 				}
 			}
 		}
@@ -173,20 +189,24 @@ class plgSystemCdn extends JPlugin
 		$linkTags = $dom->getElementsByTagName('link');
 		$cssFiles = array();
 		
+		$ignoredCss = explode('\n',$this->params->get('ignoreCombineCss'));
+		$ignoredCssFiles = array();
+		
 		foreach($linkTags as $link){
 			if($link->getAttribute('type') == 'text/css'){
 				$cssFile = $link->getAttribute('href');
-				try{
+				if(!in_array(basename($cssFile),$ignoredCss)){
 					if(JURI::isInternal($cssFile)){
 						$u =& JURI::getInstance( $cssFile );
+
 						if(sizeof($u->getQuery(true)) == 0){
 							$cssFiles[] = $link;
 						}else{
-							$this->log('Dynamic file not combined '.$u->getPath().'?'.$u->getQuery());
+							$this->log('Dynamic/Ignored file not combined '.$u->getPath().'?'.$u->getQuery());
 						}
 					}
-				}catch(Exception $e){
-					error_log('fail '.$cssFile.' - '.$e->getMessage());
+				}else{
+					$ignoredCssFiles[] = $link;
 				}
 			}
 			
@@ -200,25 +220,23 @@ class plgSystemCdn extends JPlugin
 			$u =& JURI::getInstance( $cssFile );
 			$cssPath = $u->getPath();
 			$combinedCssPaths[] = $cssPath;
-			$combinedCssName .= hash_file('md5',JPATH_SITE.DS.$cssPath);
+			$combinedCssName .= hash_file('md5',JPATH_SITE.$cssPath);
 		}
 		
+		$combinedCssName = md5($combinedCssName);
 		$cache = $this->getCache('combined_css');
 		$combinedPath = $cache->get($combinedCssName);
 		if($combinedPath === false){
 			$combinedCss = '';
 			foreach($combinedCssPaths as $cssPath){
-				$combinedCss .= file_get_contents(JPATH_SITE.DS.$cssPath);
+				$combinedCss .= file_get_contents(JPATH_SITE.$cssPath);
 			}
 
-			if(!JFolder::exists('compressed')){
-				mkdir('compressed',0777,true);
+			$combinedPath = DS.$combinedCssName.'.css';
+
+			if(JFile::write(JPATH_SITE.$combinedPath,$combinedCss, true)){
+				$cache->store($combinedPath, $combinedCssName);
 			}
-
-			$combinedPath = DS.'compressed'.DS.$combinedCssName.'.css';
-
-			file_put_contents(JPATH_SITE.DS.$combinedPath,$combinedCss);
-			$cache->store($combinedPath, $combinedCssName);
 		}
 		
 		foreach($cssFiles as $link){
@@ -230,8 +248,18 @@ class plgSystemCdn extends JPlugin
 		$linkEl = $dom->createElement('link');
 		$linkEl->setAttribute('href',$combinedPath);
 		$linkEl->setAttribute('type','text/css');
-		$linkEl->setAttribute('rel','stylesheet dns-prefetch');
-		$head->appendChild($linkEl);		
+		$linkEl->setAttribute('rel','stylesheet');
+		$head->appendChild($linkEl);
+		
+		foreach($ignoredCssFiles as $link){
+			$cssFile = $link->getAttribute('href');
+			$link->parentNode->removeChild($link);
+			$linkEl = $dom->createElement('link');
+			$linkEl->setAttribute('href',$cssFile);
+			$linkEl->setAttribute('type','text/css');
+			$linkEl->setAttribute('rel','stylesheet');
+			$head->appendChild($linkEl);
+		}		
 	}
 	
 	public function cdnCss(){
@@ -277,7 +305,7 @@ class plgSystemCdn extends JPlugin
 					
 					$path_parts = pathinfo($scriptPath);
 					$scriptHash =  hash_file('md5',JPATH_SITE.DS.$scriptPath); 
-					$compressedPath = DS.'compressed'.DS.$path_parts['dirname'].DS.$path_parts['filename'].'.compressed-'.$scriptHash.'.'.$path_parts['extension'];
+					$compressedPath = DS.$path_parts['dirname'].DS.$path_parts['filename'].'.plg_system_cdn_generated.compressed-'.$scriptHash.'.'.$path_parts['extension'];
 					
 					if(!file_exists(JPATH_SITE.$compressedPath)){
 						//Create compressed files
@@ -295,11 +323,12 @@ class plgSystemCdn extends JPlugin
 							mkdir($compressedFolder,0777,true);
 						}
 						
-						file_put_contents(JPATH_SITE.$compressedPath,$minified);						
+						if(JFile::write(JPATH_SITE.$compressedPath,$minified, true)){
+							$script->setAttribute('src',$compressedPath);
+						}					
+					}else{
+						$script->setAttribute('src',$compressedPath);
 					}
-					
-					$script->setAttribute('src',$compressedPath);
-					
 				}
 			}
 		}
@@ -347,6 +376,8 @@ class plgSystemCdn extends JPlugin
 			$combinedScritpPaths[] = $scriptPath;
 			$combinedScriptsName .= hash_file('md5',JPATH_SITE.DS.$scriptPath);
 		}
+
+		$combinedScriptsName = md5($combinedScriptsName);
 		
 		$cache = $this->getCache();
 		$combinedUrl = $cache->get($combinedScriptsName);
@@ -355,17 +386,14 @@ class plgSystemCdn extends JPlugin
 			foreach($combinedScritpPaths as $index => $scriptPath){
 				$combinedScripts .= ' '.file_get_contents(JPATH_SITE.DS.$scriptPath);
 			}
-			
-			if(!JFolder::exists('compressed')){
-				mkdir('compressed',0777,true);
+
+			$combinedPath = DS.'plg_system_cdn_generated.'.$combinedScriptsName.'.js';
+
+
+			if(JFile::write(JPATH_SITE.$combinedPath,$combinedScripts, true)){
+				$combinedUrl = $combinedPath;
+				$cache->store($combinedPath, $combinedScriptsName);
 			}
-
-			$combinedPath = DS.'compressed'.DS.$combinedScriptsName.'.js';
-			$combinedScripts .= "\n try{ cdnInit(); }catch(e){}";
-
-			file_put_contents(JPATH_SITE.DS.$combinedPath,$combinedScripts);
-			$combinedUrl = $combinedPath;
-			$cache->store($combinedPath, $combinedScriptsName);
 		}
 		
 		foreach($scriptFiles as $script){
@@ -408,9 +436,6 @@ class plgSystemCdn extends JPlugin
 				include(JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'initjs.php');
 			$wrappedScript  = ob_get_contents();
 			ob_end_clean();
-			
-			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'jsmin.php';
-			$wrappedScript = JSMin::minify($wrappedScript);
 
 			$scriptEl              = $dom->createElement('script',$wrappedScript);
 			$scriptEl->setAttribute('type','text/javascript');
@@ -418,15 +443,12 @@ class plgSystemCdn extends JPlugin
 			$body->appendChild($scriptEl);
 		}
 
-		if(sizeof($scriptDeclarations['top']) > 0){
+		if(array_key_exists('top',$scriptDeclarations) && sizeof($scriptDeclarations['top']) > 0){
 			$combinedScript          = "";
 			foreach($scriptDeclarations['top'] as $el){
 				$combinedScript .= " ".$el->nodeValue;
 			}
 			$topScript = $combinedScript;
-			
-			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'jsmin.php';
-			$topScript = JSMin::minify($topScript);
 				
 			$scriptEl = $dom->createElement('script',$topScript);
 			$scriptEl->setAttribute('type','text/javascript');
@@ -494,13 +516,11 @@ class plgSystemCdn extends JPlugin
 				$cdnUrl = $this->getObjectUrl($imagePath,true);
 				if($cdnUrl){
 					$image->setAttribute('src',$cdnUrl);
-					$image = $this->setRelPrefetch($image);
 					array_push($this->mainifestFiles,$cdnUrl);
 				}else{
 					array_push($this->mainifestFiles,$imgSrc);
 				}
 			}else{
-				$image = $this->setRelPrefetch($image);
 				array_push($this->mainifestFiles,$imgSrc);
 			}
 		}
@@ -538,7 +558,7 @@ class plgSystemCdn extends JPlugin
 			if($object){
 				try{
 					$object->load_from_filename(JPATH_SITE.DS.$objectPath);
-					$url = $object->public_uri();
+					$url = $object->public_ssl_uri();
 					$cache->store($url, $objectName);
 					
 				}catch(Exception $e){

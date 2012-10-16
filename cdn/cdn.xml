@@ -61,6 +61,7 @@
 			  <option value="1">Yes</option>
 			</field>
 			
+			<field name="ignoreCombineCss" type="textarea" default="" label="Exclude files" description="Files specified here will never be combined. Enter the full fille name and extension seperated by a new line" rows="3" cols="20" />
 			
 			<field name="username" type="text" default="" label="Username" description="Rackspace API Username" size="20" />
 			<field name="apikey" type="text" default="" label="Rackspace API Key" description="" size="50" />
