@@ -69,7 +69,6 @@ class plgSystemCdn extends JPlugin
 			$this->deferScripts();
 			$p->mark('defer scripts done');
 		}
-		//$this->addManifest();
 		
 		$this->setBody();
 		$p->mark('CDN plugin done');
@@ -87,6 +86,56 @@ class plgSystemCdn extends JPlugin
 		}
 		return $this->cache;
 	}
+
+	public function getDOM(){
+		if(is_null($this->DOM)){
+			$html = JResponse::getBody();
+			$this->DOM = new DOMDocument();
+			$this->DOM->loadHTML($html);
+		}
+		return $this->DOM;
+	}
+	
+	public function setBody(){
+		$dom = $this->getDOM();
+		
+		$head = $dom->getElementsByTagName('head')->item(0);
+		$metaEl = $dom->createElement('meta');
+		$metaEl->setAttribute('http-equiv',"Content-Type");
+		$metaEl->setAttribute('content',"text/html; charset=utf-8");
+		$metaEl->insertBefore($head->firstChild);
+		
+		
+		require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'HTML.php';
+		$minyHTML = Minify_HTML::minify($dom->saveHTML(),array('jsMinifier','cssMinifier','xhtml'));
+		
+		JResponse::setBody($minyHTML);
+	}
+
+	public function combineFiles($filesArray){
+		//Get a unique ID for this combination fo files wither their current modification dates
+		$fileID = '';
+		foreach($filesArray as $filePath){
+			$fileID .= hash_file('md5',JPATH_SITE.DS.$filePath);
+		}
+
+		$cache = $this->getCache();
+		$combinedUrl = $cache->get($fileID);
+		if($combinedUrl === false){
+			$combinedContent = '';
+			foreach($filesArray as $index => $filePath){
+				$combinedContent .= ' '.file_get_contents(JPATH_SITE.DS.$filePath);
+			}
+
+			$newPath = DS.'plg_system_cdn_generated.'.$fileID.'.'.pathinfo($filesArray[0], PATHINFO_EXTENSION);
+
+			if(JFile::write(JPATH_SITE.$newPath,$combinedContent, true)){
+				$combinedUrl = $newPath;
+				$cache->store($newPath, $fileID);
+			}
+		}
+		return $combinedUrl;
+	}
 	
 	public function setRelPrefetch($el){
 		$relValue = $el->getAttribute('rel');
@@ -95,29 +144,6 @@ class plgSystemCdn extends JPlugin
 		$el->setAttribute('rel',implode(' ',$relArray));
 		return $el;
 	}
-	
-	public function addManifest(){
-		$dom = $this->getDOM();
-		
-		$htmlTag = $dom->getElementsByTagName('html')->item(0);
-		$htmlTag->setAttribute('manifest',JURI::root().'/joomla.appcache');
-		
-		$manifest = "CACHE MANIFEST\n";
-		$manifest .= "# ".time()."\n\n";
-		$manifest .= "# Explicitly cached 'master entries'.\nCACHE:\n";
-		
-		$mainifestFiles = $this->mainifestFiles;
-		
-		foreach($mainifestFiles as $path){
-			$manifest .= $path."\n";
-		}
-		$manifest .= "\n\nNETWORK:\n*";
-		
-		
-		file_put_contents(JPATH_SITE.DS.'joomla.appcache',$manifest);
-		
-	}
-	
 	
 	public function uploadDirectories(){
 		$app = JFactory::getApplication();
@@ -146,41 +172,74 @@ class plgSystemCdn extends JPlugin
 		foreach($linkTags as $link){
 			if($link->getAttribute('type') == 'text/css'){
 				$cssFile = $link->getAttribute('href');
-				
-				if(JURI::isInternal($cssFile)){
-					$u =& JURI::getInstance( $cssFile );
-					$siteRoot = JURI::getInstance(JURI::root());
-					$cssPath = substr($u->getPath(),strlen($siteRoot->getPath()));
-					
-					$path_parts = pathinfo($cssPath);
-					$styleHash =  hash_file('md5',JPATH_SITE.DS.$cssPath); 
-					$compressedPath = DS.$path_parts['dirname'].DS.$path_parts['filename'].'.plg_system_cdn_generated.compressed-'.$styleHash.'.'.$path_parts['extension'];
-					
-					if(!file_exists(JPATH_SITE.$compressedPath)){
-						//Create compressed files
-						require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'CSS.php';
-						$cssData = file_get_contents(JPATH_SITE.DS.$cssPath);
-						
-						$minified = Minify_CSS::minify($cssData);
-						
-						$pathParts = explode(DS,$compressedPath);
-						
-						$compressedFolder = implode(DS,array_slice($pathParts,0,sizeof($pathParts) - 1));
-						$compressedFolder = ($compressedFolder[0] === '/' ) ? substr($compressedFolder,1) : $compressedFolder;
-						
-						if(!JFolder::exists($compressedFolder)){
-							mkdir($compressedFolder,0777,true);
-						}
-						
-						if(JFile::write(JPATH_SITE.$compressedPath,$minified, true)){
-							$link->setAttribute('href',$compressedPath);
-						}					
-					}else{
-						$link->setAttribute('href',$compressedPath);
-					}
+
+				$compressedPath = $this->getCompressedFile($cssFile);
+				if($compressedPath){
+					$link->setAttribute('href',$compressedPath);
 				}
 			}
 		}
+	}
+
+	public function compressScripts(){
+		$dom = $this->getDOM();
+		$scriptTags = $dom->getElementsByTagName('script');
+		foreach($scriptTags as $script){
+			if($script->getAttribute('src') !== ''){
+				$scriptFile = $script->getAttribute('src');
+				$compressedPath = $this->getCompressedFile($scriptFile);
+				if($compressedPath){
+					$script->setAttribute('src',$compressedPath);
+				}
+			}
+		}
+	}
+
+	public function getCompressedFile($path){
+		//Only compress internal files
+		if(JURI::isInternal($path)){
+			$u =& JURI::getInstance( $path );
+			$siteRoot = JURI::getInstance(JURI::root());
+			$filePath = substr($u->getPath(),strlen($siteRoot->getPath()));
+			
+			$fileID =  hash_file('md5',JPATH_SITE.DS.$filePath);
+
+			$cache = $this->getCache();
+			$compressedPath = $cache->get($fileID);
+			if($compressedPath === false){
+				$path_parts = pathinfo($filePath);
+				$compressedPath = DS.$path_parts['dirname'].DS.$path_parts['filename'].'.plg_system_cdn_generated.compressed-'.$fileID.'.'.$path_parts['extension'];
+
+				if(!file_exists(JPATH_SITE.$compressedPath)){
+					//Create compressed files
+					$uncompressed = file_get_contents(JPATH_SITE.DS.$filePath);
+
+					if($path_parts['extension'] === 'css'){
+						require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'CSS.php';
+						$minified = Minify_CSS::minify($uncompressed);
+					}else if($path_parts['extension'] === 'js'){
+						require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'jsmin.php';
+						$minified = JSMin::minify($uncompressed);
+					}
+					
+					$pathParts = explode(DS,$compressedPath);
+					
+					$compressedFolder = implode(DS,array_slice($pathParts,0,sizeof($pathParts) - 1));
+					$compressedFolder = ($compressedFolder[0] === '/' ) ? substr($compressedFolder,1) : $compressedFolder;
+					
+					if(!JFolder::exists($compressedFolder)){
+						mkdir($compressedFolder,0777,true);
+					}
+					chmod($compressedFolder, 0777);
+					if(!JFile::write(JPATH_SITE.$compressedPath,$minified, true)){
+						return false;	
+					}				
+				}
+				$cache->store($compressedPath, $fileID);
+			}
+			return $compressedPath;
+		}
+		return false;
 	}
 	
 	
@@ -214,30 +273,14 @@ class plgSystemCdn extends JPlugin
 		
 		//Combine all CSS files
 		$combinedCssPaths = array();
-		$combinedCssName = '';
 		foreach($cssFiles as $link){
 			$cssFile = $link->getAttribute('href');
 			$u =& JURI::getInstance( $cssFile );
 			$cssPath = $u->getPath();
 			$combinedCssPaths[] = $cssPath;
-			$combinedCssName .= hash_file('md5',JPATH_SITE.$cssPath);
 		}
-		
-		$combinedCssName = md5($combinedCssName);
-		$cache = $this->getCache('combined_css');
-		$combinedPath = $cache->get($combinedCssName);
-		if($combinedPath === false){
-			$combinedCss = '';
-			foreach($combinedCssPaths as $cssPath){
-				$combinedCss .= file_get_contents(JPATH_SITE.$cssPath);
-			}
 
-			$combinedPath = DS.$combinedCssName.'.css';
-
-			if(JFile::write(JPATH_SITE.$combinedPath,$combinedCss, true)){
-				$cache->store($combinedPath, $combinedCssName);
-			}
-		}
+		$combinedUrl = $this->combineFiles($combinedCssPaths);
 		
 		foreach($cssFiles as $link){
 			$link->parentNode->removeChild($link);
@@ -246,7 +289,7 @@ class plgSystemCdn extends JPlugin
 		$head = $dom->getElementsByTagName('head')->item(0);
 
 		$linkEl = $dom->createElement('link');
-		$linkEl->setAttribute('href',$combinedPath);
+		$linkEl->setAttribute('href',$combinedUrl);
 		$linkEl->setAttribute('type','text/css');
 		$linkEl->setAttribute('rel','stylesheet');
 		$head->appendChild($linkEl);
@@ -292,59 +335,14 @@ class plgSystemCdn extends JPlugin
 		}
 	}
 	
-	public function compressScripts(){
-		$dom = $this->getDOM();
-		$scriptTags = $dom->getElementsByTagName('script');
-		foreach($scriptTags as $script){
-			if($script->getAttribute('src') !== ''){
-				$scriptFile = $script->getAttribute('src');
-				if(JURI::isInternal($scriptFile)){
-					$u =& JURI::getInstance( $scriptFile );
-					$siteRoot = JURI::getInstance(JURI::root());
-					$scriptPath = substr($u->getPath(),strlen($siteRoot->getPath()));
-					
-					$path_parts = pathinfo($scriptPath);
-					$scriptHash =  hash_file('md5',JPATH_SITE.DS.$scriptPath); 
-					$compressedPath = DS.$path_parts['dirname'].DS.$path_parts['filename'].'.plg_system_cdn_generated.compressed-'.$scriptHash.'.'.$path_parts['extension'];
-					
-					if(!file_exists(JPATH_SITE.$compressedPath)){
-						//Create compressed files
-						require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'jsmin.php';
-						$scriptData = file_get_contents(JPATH_SITE.DS.$scriptPath);
-						
-						$minified = JSMin::minify($scriptData);
-						
-						$pathParts = explode(DS,$compressedPath);
-						
-						$compressedFolder = implode(DS,array_slice($pathParts,0,sizeof($pathParts) - 1));
-						$compressedFolder = ($compressedFolder[0] === '/' ) ? substr($compressedFolder,1) : $compressedFolder;
-						
-						if(!JFolder::exists($compressedFolder)){
-							mkdir($compressedFolder,0777,true);
-						}
-						
-						if(JFile::write(JPATH_SITE.$compressedPath,$minified, true)){
-							$script->setAttribute('src',$compressedPath);
-						}					
-					}else{
-						$script->setAttribute('src',$compressedPath);
-					}
-				}
-			}
-		}
-	}
-	
 	public function combineScripts(){
 		$dom = $this->getDOM();
 		$scriptTags = $dom->getElementsByTagName('script');
 		
 		$scriptFiles = array();
 		$scriptDeclarations = array();
-		$removeList = array(); 
 		
 		foreach($scriptTags as $script){
-			$removeList[] = $script; 
-			
 			if($script->getAttribute('src') !== ''){
 				$scriptFile = $script->getAttribute('src');
 
@@ -358,43 +356,21 @@ class plgSystemCdn extends JPlugin
 					}
 				}
 			}else{
-				$position = $script->getAttribute('data-cdn-position') == '' ? 'bottom' : $script->getAttribute('data-cdn-position');
-				$scriptDeclarations[$position][] = $script;
+				$scriptDeclarations[] = $script;
 			}
 		}
 		
-		$body = $dom->getElementsByTagName('body')->item(0);
-		
 		//Combine all javascript files
-		$combinedScritpPaths = array();
-		$combinedScriptsName = '';
+		$combinedScriptPaths = array();
 		
 		foreach($scriptFiles as $script){
 			$scriptFile = $script->getAttribute('src');
 			$u =& JURI::getInstance( $scriptFile );
 			$scriptPath = $u->getPath();
-			$combinedScritpPaths[] = $scriptPath;
-			$combinedScriptsName .= hash_file('md5',JPATH_SITE.DS.$scriptPath);
+			$combinedScriptPaths[] = $scriptPath;
 		}
 
-		$combinedScriptsName = md5($combinedScriptsName);
-		
-		$cache = $this->getCache();
-		$combinedUrl = $cache->get($combinedScriptsName);
-		if($combinedUrl === false){
-			$combinedScripts = '';
-			foreach($combinedScritpPaths as $index => $scriptPath){
-				$combinedScripts .= ' '.file_get_contents(JPATH_SITE.DS.$scriptPath);
-			}
-
-			$combinedPath = DS.'plg_system_cdn_generated.'.$combinedScriptsName.'.js';
-
-
-			if(JFile::write(JPATH_SITE.$combinedPath,$combinedScripts, true)){
-				$combinedUrl = $combinedPath;
-				$cache->store($combinedPath, $combinedScriptsName);
-			}
-		}
+		$combinedUrl = $this->combineFiles($combinedScriptPaths);
 		
 		foreach($scriptFiles as $script){
 			$script->parentNode->removeChild($script);	
@@ -405,7 +381,21 @@ class plgSystemCdn extends JPlugin
 		$scriptEl = $dom->createElement('script');
 		$scriptEl->setAttribute('src',$combinedUrl);
 		$scriptEl->setAttribute('type','text/javascript');
+
 		$head->appendChild($scriptEl);
+
+		//Combine script blocks
+		$combinedScript = '';
+		foreach($scriptDeclarations as $script){
+			$combinedScript .= $script->nodeValue;
+		}
+		$scriptBlock = $dom->createElement('script' ,$combinedScript);
+		$scriptBlock->setAttribute('type','text/javascript');
+		$head->appendChild($scriptBlock);
+
+		foreach($scriptDeclarations as $script){
+			$script->parentNode->removeChild($script);	
+		}
 		
 	}
 	
@@ -550,7 +540,6 @@ class plgSystemCdn extends JPlugin
 		$cache = $this->getCache();
 		
 		$url = $cache->get($objectName);
-	//	$url = false;
 		if($url === false){
 			$object =& $this->createObject($objectName);
 			$object->metadata = $headers;
@@ -667,30 +656,5 @@ class plgSystemCdn extends JPlugin
 			}
 		}
 		return $this->cloudAuth;
-	}
-	
-	public function getDOM(){
-		if(is_null($this->DOM)){
-			$html = JResponse::getBody();
-			$this->DOM = new DOMDocument();
-			$this->DOM->loadHTML($html);
-		}
-		return $this->DOM;
-	}
-	
-	public function setBody(){
-		$dom = $this->getDOM();
-		
-		$head = $dom->getElementsByTagName('head')->item(0);
-		$metaEl = $dom->createElement('meta');
-		$metaEl->setAttribute('http-equiv',"Content-Type");
-		$metaEl->setAttribute('content',"text/html; charset=utf-8");
-		$metaEl->insertBefore($head->firstChild);
-		
-		
-		require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'cdn'.DS.'HTML.php';
-		$minyHTML = Minify_HTML::minify($dom->saveHTML(),array('jsMinifier','cssMinifier','xhtml'));
-		
-		JResponse::setBody($minyHTML);
 	}
 }
