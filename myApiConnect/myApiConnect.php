@@ -39,22 +39,13 @@ class myApi extends JPlugin{
 	private static $myApiParams;
 	private static $twitter;
 	private static $ogTags = array();
-	
+	public 	$parsedSignedRequest = null;
+	public 	$appData = null;
 	
 	public function __construct(& $subject, $config) {
  		parent::__construct($subject, $config);
  		$this->loadLanguage();
 		self::$instance = $this;
-		
-		//Custom OG tags for WU
-		$ogTags = array();
-		$ogTags['fb:app_id']		= $this->getFbAppId();
-		$ogTags['og:url']			= 'http://apps.facebook.com/'.$this->getFbNamespace();
-		//$ogTags['og:title']			= '';
-		//$ogTags['og:description']	= '';
-		//$ogTags['og:image']			= '';
-		
-		$this->setOpenGraphTags($ogTags);
 	}
 	
 	public static function getInstance() { 
@@ -72,44 +63,45 @@ class myApi extends JPlugin{
 	public function getFbNamespace(){
 		return $this->params->get('namespace');		
 	}
+
+	public function getModel(){
+		JLoader::import('joomla.application.component.model');
+		JLoader::import( 'myApi', JPATH_SITE . DS . 'plugins' . DS . 'system' . DS . 'myApiConnect');
+	
+		return JModel::getInstance('myApi', 'myApiModel');
+	}
 	
 	public function getFacebook(){
 		if(!self::$facebook){		
 			require_once JPATH_SITE.DS.'plugins'.DS.'system'.DS.'myApiConnect'.DS.'myApiConnectFacebook.php';
-			$appId = self::getFbAppId();
-			$secret = self::getFbSecret();
-			if( $appId == '' || $secret == ''){
-				if( !is_object(JError::getError()) || (is_object(JError::getError()) && JError::getError()->getCode() != '100') ){
-					JError::raiseWarning( 100, 'myApi requires a Facebook Application ID',array('myApi' =>'100'));
-					return  false;
-				}
+			$appId = (string) self::getFbAppId();
+			$secret = (string) self::getFbSecret();
+			if( $appId !== '' && $secret !== ''){
+				self::$facebook =  new myApiFacebook(array(   
+					'appId'  => $appId,
+					'secret' => $secret,
+					'cookie' => true, // enable optional cookie support
+				));
+			}else{
+				self::$facebook = false;	
 			}
-			self::$facebook =  new myApiFacebook(array(   
-				'appId'  => $appId,
-				'secret' => $secret,
-				'cookie' => true, // enable optional cookie support
-			));
 		}
 		
 		return self::$facebook;
 	}
-	
-	public function getTwitter(){
-		if(!self::$twitter){
-			jimport( 'joomla.application.component.helper' );
-		
-		  	require_once JPATH_SITE.DS.'includes'.DS.'twitter'.DS.'EpiTwitter.php';
-			self::$twitter = new EpiTwitter(	$consumer_key = $this->params->get('consumerKey'), 
-										  $consumer_secret = $this->params->get('consumerSecret'), 
-										  $oauthToken = $this->params->get('oauthToken'), 
-										  $oauthTokenSecret = $this->params->get('oauthSecret')
-									  );
-		
-			self::$twitter->appUserName = $this->params->get('twitterUsername');
-		}
-		
-		return self::$twitter;
+
+	public function getTabAppUrl(){
+		$pageId = $this->params->get('pageId');
+		$appId = self::getFbAppId();
+
+		$tabUrl = "http://www.facebook.com/pages/null/{$pageId}?sk=app_{$appId}";
+		return $tabUrl;
 	}
+
+	public function getCanvasUrl(){
+		return 'http://apps.facebook.com/'.self::getFbNamespace().'/';	
+	}
+
 	
 	public function getOpenGrpahTags(){
 		return 	self::$ogTags;
@@ -118,6 +110,70 @@ class myApi extends JPlugin{
 	public function setOpenGraphTags($tags){
 		self::$ogTags = array_merge(self::$ogTags,$tags);
 	}
+
+	public function getUserAccessToken($userId){
+		$facebook = $this->getFacebook();
+
+		if($facebook->getUser()){
+			return $facebook->getAccessToken();
+		}else{
+			$db = JFactory::getDBO();
+			$query = $db->getQuery(true);
+
+			$query->select('access_token')->from('#__facebook_users')->where('userId ='. (int) $userId);
+			$db->setQuery($query);
+
+			return $db->loadResult();
+		}
+	}
+
+	public function setUserAccessToken($userId,$token){
+		$db = JFactory::getDBO();
+		$query = $db->getQuery(true);
+
+		$query = "UPDATE ".$db->nameQuote('#__facebook_users')."  SET access_token =  ".$db->quote($token).";";
+        $db->setQuery($query);
+
+        return $db->query();
+	}
+
+	public function getParsedSignedRequest(){
+		$raw = JRequest::getVar('signed_request',null);
+		if(is_null($this->parsedSignedRequest) && !is_null($raw)){
+			$this->parsedSignedRequest = $this->parse_signed_request($raw);
+		}	
+		return $this->parsedSignedRequest; 
+	}
+
+	//Parse the signed request if found to find the correct url to show
+	protected function parse_signed_request($signed_request) {
+		list($encoded_sig, $payload) = explode('.', $signed_request, 2); 
+		
+		// decode the data
+		$sig = $this->base64_url_decode($encoded_sig);
+		$data = json_decode($this->base64_url_decode($payload), true);
+		
+		if (strtoupper($data['algorithm']) !== 'HMAC-SHA256') {
+			error_log('Unknown algorithm. Expected HMAC-SHA256');
+			return null;
+		}
+		
+		$myApi = myApi::getInstance();
+		
+		// check sig
+		$expected_sig = hash_hmac('sha256', $payload, $myApi->getFbSecret(), $raw = true);
+		if ($sig !== $expected_sig) {
+			error_log('Bad Signed JSON signature! when decoding signed request');
+			return NULL;
+		}
+		
+		return $data;
+	}
+
+	public function base64_url_decode($input) {
+	  return base64_decode(strtr($input, '-_', '+/'));
+	}
+
 }
 
 
@@ -129,12 +185,92 @@ class plgSystemmyApiConnect extends myApi
  		parent::__construct($subject, $config);
  		$this->loadLanguage();
 	}
+
+	private function jsRedirect($location){
+		$mainframe = JFactory::getApplication();
+		echo '<script type="text/javascript">';
+		echo "window.parent.location = '{$location}'";
+		echo '</script>';
+		$mainframe->close();
+	}
+
+	function onAfterInitialise(){
+		$signed_request = $this->getParsedSignedRequest();
+
+		if(is_null(JRequest::getVar('myApiRedirect',null)) && is_array($signed_request) && array_key_exists('app_data', $signed_request)){
+			$parsedData = unserialize($signed_request['app_data']);
+
+			if(is_array($parsedData) && array_key_exists('redirect', $parsedData)){
+				$data = array_merge($parsedData['redirect'], array('myApiRedirect' => '1'));
+				$query = http_build_query($data);
+				$mainframe = JFactory::getApplication();
+
+				$mainframe->redirect('index.php?'.$query);
+				$mainframe->close();
+			}
+		}
+	}
 	
 	function onAfterDispatch(){
 		$mainframe = JFactory::getApplication();
 		$document = JFactory::getDocument(); 
 		if($document->getType() != 'html')
 			return;
+
+		$myApi = myApi::getInstance();
+
+		if($mainframe->isAdmin()){
+			$token = JRequest::getVar('oauth_token',null);
+			$user = JFactory::getUser();
+			if(!is_null($token) && $user->guest){
+				$facebook = $myApi->getFacebook();
+				$facebook->setAccessToken($token);
+				$uid = $facebook->getUser();
+				$mainframe->login($uid);
+				$mainframe->redirect(JURI::current());
+			}
+		}else{
+			$signedRequest = $myApi->getParsedSignedRequest();
+
+			//Update the users access token
+			$user = JFactory::getUser();
+			if(!$user->guest && is_array($signedRequest) && array_key_exists('oauth_token',$signedRequest)){
+				$this->setUserAccessToken($user->id, $signedRequest['oauth_token']);
+			}
+
+			//The myAPi pageId is the privalged page for this application. Admins of this page are admins of the site.
+			$pageId = $this->params->get('pageId');
+			if(is_array($signedRequest) && array_key_exists('page', $signedRequest) && array_key_exists('app_data', $signedRequest) && $signedRequest['page']['id'] == $pageId && $signedRequest['page']['admin'] == 1 && $signedRequest['app_data'] == 'adminRedirect'){
+				$user = JFactory::getUser();
+
+				if($user->guest){
+					//Redirect to login
+					$loginRedirect = 'http://facebook.com/pages/null/'.$pageId.'?sk=app_'.$this->params->get('appId').'&app_data=adminRedirect';
+					$login = JURI::root().'index.php?option=com_myapi&task=createOrLogin&return='.urlencode(base64_encode($loginRedirect));
+					$this->jsRedirect($login);
+				}else{
+					//Redirect to admin
+					$userAccess = $this->params->get('usergroup');
+					$userGroups = $user->getAuthorisedGroups();
+
+					$token = $signedRequest['oauth_token'];
+					if(in_array($userAccess,$userGroups)){
+						//Login and redirect to admin
+						$this->jsRedirect(JURI::root().'administrator/?oauth_token='.$token);
+					}else{
+						//Upgrade user
+						$db = JFactory::getDBO();
+						$query = "INSERT INTO ".$db->nameQuote('#__user_usergroup_map')." (`user_id`,`group_id`) VALUES (".$db->quote($user->id).",".$db->quote($userAccess).")";
+						$db->setQuery($query);
+
+						if($db->query()){
+							$mainframe->logout();
+							$this->jsRedirect(JURI::root().'administrator/?oauth_token='.$token);
+						}
+					}
+				}
+			}
+		}
 	}
 	
 	function onBeforeRender(){
@@ -147,6 +283,25 @@ class plgSystemmyApiConnect extends myApi
 		
 		foreach($tags as $key => $value) $document->addCustomTag('<meta property="'.$key.'" content="'.htmlspecialchars($value).'" />');
 		
+		$document->addStylesheet(JURI::root().'plugins'.DS.'system'.DS.'myApiConnect'.DS.'myApiConnect'.DS.'myApi.css');
+		//$document->addScript(JURI::root().'plugins'.DS.'system'.DS.'myApiConnect'.DS.'myApiConnect'.DS.'myApiModal.js');
+		$document->addScript(JURI::root().'plugins'.DS.'system'.DS.'myApiConnect'.DS.'myApiConnect'.DS.'myApi.js');
+
+		$appId = $myApi->getFbAppId();
+		
+		$u 		= JURI::getInstance( JURI::root() );
+		$port 	= ($u->getPort() == '') ? '' : ":".$u->getPort();
+		$xdPath	= $u->getScheme().'://'.$u->getHost().$port.$u->getPath().'plugins/system/myApiConnect/facebookXD.php';
+		
+		$lang =& JFactory::getLanguage();
+		$langCode = str_replace('-','_',$lang->getTag());
+		
+		$myApiJsOptions = json_encode(array('langCode' => $langCode,'channelUrl' => $xdPath));
+
+		//Kick off the myApi JS, this includes FB onto your page
+		$script = "myApi = new MyApi('{$appId}',{$myApiJsOptions});";
+		$document->addScriptDeclaration($script);
+
 	}
 	
 	function onAfterRender(){
@@ -157,52 +312,9 @@ class plgSystemmyApiConnect extends myApi
 		
 		if ($mainframe->getName() != 'site' || $document->getType() != 'html' || $myApi->getFbAppId() == '') 
 			return;
-		
-		
-		$appId = $myApi->getFbAppId();
-		
-		$u 		= JURI::getInstance( JURI::root() );
-		$port 	= ($u->getPort() == '') ? '' : ":".$u->getPort();
-		$xdPath	= $u->getScheme().'://'.$u->getHost().$port.$u->getPath().'plugins/system/myApiConnect/facebookXD.php';
-		
-		$lang =& JFactory::getLanguage();
-		$langCode = str_replace('-','_',$lang->getTag());
-		
-		$script = <<<EOD
-/* <![CDATA[ */	
-document.getElementsByTagName("html")[0].style.display="block";	
-
-(function() {
-	var e = document.createElement('script'); e.async = true;
-	e.src = document.location.protocol + '//connect.facebook.net/{$langCode}/all.js';
-	document.getElementById('fb-root').appendChild(e);
-}());
-
-window.fbAsyncInit = function() {
-FB._https = (window.location.protocol == "https:");
-FB.init({appId: "{$appId}", status: true, cookie: true, xfbml: true, channelUrl: "{$xdPath}", oauth: true, authResponse: true});
-if(FB._inCanvas){
-	FB.Canvas.setSize(760);
-	FB.Canvas.setAutoResize(500);
-	FB.Canvas.scrollTo(0,0);
-}
-
-$(document).fireEvent('fbAsyncInit');
-
-};
-/* ]]> */
-EOD;
 	
 		$dom = $this->getDOM();
 		$body = $dom->getElementsByTagName('body')->item(0);
-		
-		$fbroot = $dom->createElement('div');	
-		$fbroot->setAttribute('id','fb-root');
-		$body->appendChild($fbroot);
-		
-		$fbScript = $dom->createElement('script',$script);
-		$fbScript->setAttribute('type','text/javascript');
-		$body->appendChild($fbScript);
 		
 		//Add FB prefix to the head and html tag
 		$head = $dom->getElementsByTagName('head')->item(0);

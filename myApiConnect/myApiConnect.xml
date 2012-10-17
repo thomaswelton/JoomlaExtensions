@@ -15,6 +15,8 @@
 		<filename>base_facebook.php</filename>
 		<filename>facebookXD.php</filename>
 		<filename>fb_ca_chain_bundle.crt</filename>
+		<filename>fbapp.png</filename>
+		<folder>myApiConnect</folder>
 	</files>
 	
 	<languages>
@@ -27,6 +29,10 @@
 				<field name="appId" type="text" label="PARAM_ID_LABEL" description="PARAM_ID_DESC" size="50" />
 				<field name="secret" type="text" default="" label="PARAM_SECRET_LABEL" description="PARAM_SECRET_DESC" size="50" />
 				<field name="namespace" type="text" default="" label="Namespace" description="Application namespace" size="50" />
+
+				<field name="pageId" type="text" label="Page ID" description="Optional Page ID to give privalged access to and provide some default vaules for social plugins" size="50" />
+				<field name="usergroup" type="usergroup" default="" label="usergroup" description="usergroup" />
+				
 				
 				<field name="locale" type="list" default="en_US" label="PARAM_LOCALE_LABEL" description="PARAM_LOCALE_DESC">
 					<option value="ca_ES">Catalan</option>
