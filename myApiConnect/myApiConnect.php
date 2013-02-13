@@ -293,7 +293,7 @@ class plgSystemmyApiConnect extends myApi
 		$port 	= ($u->getPort() == '') ? '' : ":".$u->getPort();
 		$xdPath	= $u->getScheme().'://'.$u->getHost().$port.$u->getPath().'plugins/system/myApiConnect/facebookXD.php';
 		
-		$lang =& JFactory::getLanguage();
+		$lang = JFactory::getLanguage();
 		$langCode = str_replace('-','_',$lang->getTag());
 		
 		$myApiJsOptions = json_encode(array('langCode' => $langCode,'channelUrl' => $xdPath));
